@@ -10,7 +10,6 @@
 ## Stoel
 - Stoel
 	- [Sparco met oren](https://pro-racing.nl/sparco-circuit-qrt.html) 615,-
-	- [Sparco met oren](https://pro-racing.nl/sparco-circuit-ii-qrt.html) 654,-
 	- [Sparco zonder oren](https://pro-racing.nl/sparco-grid-q-qrt.html) 465,-
 - [Stoelbevestiging zij montage](https://pro-racing.nl/sparco-zijmontage-frame-staal-eco.html) 65,-
 - [Rails](https://pro-racing.nl/sparco-stoelrails-eco.html) 50,-
