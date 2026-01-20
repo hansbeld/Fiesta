@@ -1,5 +1,13 @@
 # Beluku 2026
 
+## Polyrubbers
+
+stabilisatorstang dikte ? 16 / 18 /19 mm
+https://www.polyurethaan-bussen.nl/strongflex-076168a-7348#/28-front_anti_roll_bar-18mm/669-color-black
+https://www.polyurethaan-bussen.nl/lidwoord/7-bussen-hardheid
+Geel = 90Sha
+
+
 Auto’s
 * type kenteken plaatje dashboard ( deurbel plaatje ) 
 * Motorkap koeling
