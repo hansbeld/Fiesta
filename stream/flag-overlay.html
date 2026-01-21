@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Race Flag Overlay - OBS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: transparent;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+        }
+
+        /* Setup screen */
+        .setup-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #1a1a2e;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            z-index: 1000;
+        }
+
+        .setup-screen.hidden {
+            display: none;
+        }
+
+        .setup-screen h1 {
+            font-family: 'Orbitron', sans-serif;
+            color: #00d4ff;
+            font-size: 24px;
+        }
+
+        .setup-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background: #252540;
+            padding: 30px;
+            border-radius: 12px;
+            min-width: 350px;
+        }
+
+        .setup-form label {
+            color: #aaa;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .setup-form input, .setup-form select {
+            padding: 12px 16px;
+            background: #1a1a2e;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 16px;
+        }
+
+        .setup-form button {
+            padding: 14px 24px;
+            background: linear-gradient(135deg, #00d4ff, #0099cc);
+            border: none;
+            border-radius: 6px;
+            color: #000;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .url-hint {
+            padding: 15px;
+            background: #333;
+            border-radius: 8px;
+            color: #888;
+            font-size: 12px;
+            font-family: monospace;
+        }
+
+        .url-hint code {
+            color: #00d4ff;
+        }
+
+        /* Flag overlay styles */
+        .overlay-container {
+            position: fixed;
+            padding: 10px;
+        }
+
+        .overlay-container.top-left { top: 0; left: 0; }
+        .overlay-container.top-right { top: 0; right: 0; }
+        .overlay-container.bottom-left { bottom: 0; left: 0; }
+        .overlay-container.bottom-right { bottom: 0; right: 0; }
+        .overlay-container.top-center { top: 0; left: 50%; transform: translateX(-50%); }
+        .overlay-container.bottom-center { bottom: 0; left: 50%; transform: translateX(-50%); }
+
+        .flag-overlay {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 12px 20px;
+            background: linear-gradient(180deg, rgba(20, 20, 40, 0.95) 0%, rgba(10, 10, 25, 0.95) 100%);
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Flag indicator */
+        .flag-indicator {
+            width: 50px;
+            height: 50px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+        }
+
+        .flag-indicator.green {
+            background: linear-gradient(135deg, #00ff88, #00cc66);
+            animation: flagPulse 2s infinite;
+        }
+
+        .flag-indicator.yellow {
+            background: linear-gradient(135deg, #ffdd00, #ffaa00);
+            animation: flagPulse 0.5s infinite;
+        }
+
+        .flag-indicator.red {
+            background: linear-gradient(135deg, #ff4444, #cc0000);
+            animation: flagPulse 0.3s infinite;
+        }
+
+        .flag-indicator.checkered {
+            background: repeating-conic-gradient(#000 0deg 90deg, #fff 90deg 180deg);
+            background-size: 25px 25px;
+        }
+
+        .flag-indicator.sc, .flag-indicator.safety-car {
+            background: linear-gradient(135deg, #ffaa00, #ff8800);
+            animation: flagPulse 1s infinite;
+        }
+
+        .flag-indicator.fcy {
+            background: linear-gradient(135deg, #ffdd00, #ffaa00);
+            animation: flagPulse 1s infinite;
+        }
+
+        .flag-indicator.code60 {
+            background: linear-gradient(135deg, #ffdd00, #ff8800);
+            animation: flagPulse 1s infinite;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 18px;
+            font-weight: 900;
+            color: #000;
+        }
+
+        .flag-indicator.not-started {
+            background: linear-gradient(135deg, #666, #444);
+        }
+
+        @keyframes flagPulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.05); }
+        }
+
+        /* Race info */
+        .race-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .race-name {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 16px;
+            font-weight: bold;
+            color: #fff;
+            max-width: 300px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .flag-status {
+            font-size: 14px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .flag-status.green { color: #00ff88; }
+        .flag-status.yellow { color: #ffdd00; }
+        .flag-status.red { color: #ff4444; }
+        .flag-status.checkered { color: #fff; }
+        .flag-status.sc, .flag-status.safety-car { color: #ffaa00; }
+        .flag-status.fcy { color: #ffdd00; }
+        .flag-status.code60 { color: #ff8800; }
+        .flag-status.not-started { color: #888; }
+
+        /* Timer */
+        .race-timer {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 28px;
+            font-weight: bold;
+            color: #00d4ff;
+            min-width: 120px;
+            text-align: right;
+        }
+
+        /* Compact mode */
+        .flag-overlay.compact {
+            padding: 8px 15px;
+            gap: 10px;
+        }
+
+        .flag-overlay.compact .flag-indicator {
+            width: 35px;
+            height: 35px;
+            font-size: 18px;
+        }
+
+        .flag-overlay.compact .race-name {
+            font-size: 13px;
+        }
+
+        .flag-overlay.compact .flag-status {
+            font-size: 11px;
+        }
+
+        .flag-overlay.compact .race-timer {
+            font-size: 20px;
+        }
+
+        /* Minimal - just flag */
+        .flag-overlay.minimal .race-info,
+        .flag-overlay.minimal .race-timer {
+            display: none;
+        }
+
+        .flag-overlay.minimal {
+            padding: 10px;
+        }
+
+        .flag-overlay.minimal .flag-indicator {
+            width: 60px;
+            height: 60px;
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 6px 12px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 4px;
+            font-size: 11px;
+            color: #888;
+        }
+
+        .connection-status.connected { color: #00ff88; }
+        .connection-status.disconnected { color: #ff4444; }
+
+        body.obs-mode .connection-status { display: none; }
+    </style>
+</head>
+<body>
+    <!-- Setup Screen -->
+    <div class="setup-screen" id="setupScreen">
+        <h1>🏁 Race Flag Overlay</h1>
+        
+        <div class="setup-form">
+            <label>WebSocket URL</label>
+            <input type="text" id="wsUrlInput" placeholder="wss://livetiming.example.com/..." value="wss://livetiming.getraceresults.com/lt/connect?transport=webSockets&amp;clientProtocol=1.5&amp;_tk=84992738a8304d15a8f20722b7a27947&amp;_gr=w&amp;_tkdm=1041140&amp;connectionToken=FWT09RJEOFAHDbxfUngcCCb1h6UM6Yy0rx%2BBv0jXaVEC5KnepwdkWeHqZh58rBQmrV1hEAOpLQbfzrSUbMLBjHrrRU0NjN1kSovhFcPmOY%2BQxqWcOvb4ua56RpUtVb1O&amp;tid=6">
+            
+            <label>Position</label>
+            <select id="positionSelect">
+                <option value="top-left" selected>Top Left</option>
+                <option value="top-center">Top Center</option>
+                <option value="top-right">Top Right</option>
+                <option value="bottom-left">Bottom Left</option>
+                <option value="bottom-center">Bottom Center</option>
+                <option value="bottom-right">Bottom Right</option>
+            </select>
+            
+            <label>Style</label>
+            <select id="styleSelect">
+                <option value="full">Full (flag + name + timer)</option>
+                <option value="compact">Compact</option>
+                <option value="minimal">Minimal (flag only)</option>
+            </select>
+            
+            <button onclick="startOverlay()">Start Overlay</button>
+        </div>
+        
+        <div class="url-hint">
+            <code>?ws=wss://...&pos=top-left&style=full</code>
+        </div>
+    </div>
+
+    <!-- Overlay -->
+    <div class="overlay-container top-left" id="overlayContainer" style="display: none;">
+        <div class="flag-overlay" id="flagOverlay">
+            <div class="flag-indicator not-started" id="flagIndicator">🏁</div>
+            <div class="race-info">
+                <div class="race-name" id="raceName">Waiting...</div>
+                <div class="flag-status not-started" id="flagStatus">NOT STARTED</div>
+            </div>
+            <div class="race-timer" id="raceTimer">--:--</div>
+        </div>
+    </div>
+
+    <div class="connection-status" id="connectionStatus">Disconnected</div>
+
+    <script>
+        let config = { wsUrl: null, position: 'top-left', style: 'full' };
+        let ws = null;
+        let heatState = { name: '', flag: null, flagClass: 'not-started', flagText: 'NOT STARTED' };
+        let raceStartTime = null;
+        let raceEndTime = null;
+
+        // Parse URL params
+        function parseUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            
+            if (params.has('ws')) {
+                config.wsUrl = params.get('ws');
+                document.getElementById('wsUrlInput').value = config.wsUrl;
+            }
+            if (params.has('pos')) {
+                config.position = params.get('pos');
+                document.getElementById('positionSelect').value = config.position;
+            }
+            if (params.has('style')) {
+                config.style = params.get('style');
+                document.getElementById('styleSelect').value = config.style;
+            }
+            
+            if (config.wsUrl) {
+                document.body.classList.add('obs-mode');
+                startOverlay();
+            }
+        }
+
+        function startOverlay() {
+            config.wsUrl = document.getElementById('wsUrlInput').value.trim();
+            config.position = document.getElementById('positionSelect').value;
+            config.style = document.getElementById('styleSelect').value;
+            
+            if (!config.wsUrl) {
+                alert('Please enter a WebSocket URL');
+                return;
+            }
+            
+            document.getElementById('setupScreen').classList.add('hidden');
+            document.getElementById('overlayContainer').style.display = 'block';
+            
+            const container = document.getElementById('overlayContainer');
+            container.className = 'overlay-container ' + config.position;
+            
+            const overlay = document.getElementById('flagOverlay');
+            overlay.className = 'flag-overlay ' + config.style;
+            
+            connect(config.wsUrl);
+            setInterval(updateTimer, 1000);
+        }
+
+        function connect(url) {
+            document.getElementById('connectionStatus').textContent = 'Connecting...';
+            
+            ws = new WebSocket(url);
+            
+            ws.onopen = () => {
+                document.getElementById('connectionStatus').textContent = 'Connected';
+                document.getElementById('connectionStatus').className = 'connection-status connected';
+            };
+            
+            ws.onmessage = (event) => {
+                if (!event.data || event.data === '{}') return;
+                try {
+                    const message = JSON.parse(event.data);
+                    if (message.M) message.M.forEach(m => processMessage(m));
+                } catch (e) {}
+            };
+            
+            ws.onclose = () => {
+                document.getElementById('connectionStatus').textContent = 'Disconnected';
+                document.getElementById('connectionStatus').className = 'connection-status disconnected';
+                setTimeout(() => { if (config.wsUrl) connect(config.wsUrl); }, 3000);
+            };
+        }
+
+        function processMessage(msg) {
+            let method, args;
+            if (Array.isArray(msg)) { method = msg[0]; args = msg.slice(1); }
+            else if (msg.M) { method = msg.M; args = msg.A || []; }
+            else return;
+            
+            // Log all methods
+            console.log('[Flag] Method:', method);
+            
+            switch (method) {
+                case '_':
+                    if (args[0] && typeof args[0] === 'string') {
+                        try {
+                            let decompressed = LZString.decompressFromUTF16(args[0]);
+                            if (!decompressed) decompressed = LZString.decompress(args[0]);
+                            if (decompressed) {
+                                const data = JSON.parse(decompressed);
+                                console.log('[Flag] Bulk data types:', Array.isArray(data) ? data.map(m => m[0]) : Object.keys(data));
+                                if (Array.isArray(data)) {
+                                    data.forEach(m => {
+                                        if (Array.isArray(m) && m[0] === 'h_i') {
+                                            console.log('[Flag] Found h_i in bulk:', m[1]);
+                                            updateHeatState(m[1]);
+                                        }
+                                    });
+                                }
+                            }
+                        } catch (e) {
+                            console.error('[Flag] Decompress error:', e);
+                        }
+                    }
+                    break;
+                case 'h_i':
+                case 'h_h':
+                    console.log('[Flag] Heat state update:', args[0]);
+                    updateHeatState(args[0]);
+                    break;
+            }
+        }
+
+        function updateHeatState(data) {
+            console.log('[Flag] updateHeatState called with:', data);
+            if (!data) return;
+            
+            if (data.n) {
+                heatState.name = data.n;
+                document.getElementById('raceName').textContent = data.n;
+                console.log('[Flag] Race name:', data.n);
+            }
+            
+            if (data.f !== undefined) {
+                console.log('[Flag] Flag value:', data.f, 'type:', typeof data.f);
+                heatState.flag = data.f;
+                
+                // Match main app flag mapping
+                const flagMap = {
+                    '-1': { cls: 'not-started', text: 'NOT STARTED', icon: '🏁' },
+                    '0': { cls: 'not-started', text: 'NOT STARTED', icon: '🏁' },
+                    '1': { cls: 'not-started', text: 'READY', icon: '🏁' },
+                    '2': { cls: 'red', text: 'RED FLAG', icon: '🔴' },
+                    '3': { cls: 'yellow', text: 'YELLOW', icon: '🟡' },
+                    '4': { cls: 'fcy', text: 'FCY', icon: '🟡' },
+                    '5': { cls: 'checkered', text: 'FINISHED', icon: '🏁' },
+                    '6': { cls: 'green', text: 'GREEN', icon: '🟢' },
+                    '7': { cls: 'sc', text: 'SAFETY CAR', icon: '🚗' },
+                    '8': { cls: 'code60', text: 'CODE 60', icon: '60' }
+                };
+                
+                const flagKey = String(data.f);
+                const flagInfo = flagMap[flagKey] || flagMap['0'];
+                console.log('[Flag] Mapped to:', flagInfo);
+                heatState.flagClass = flagInfo.cls;
+                heatState.flagText = flagInfo.text;
+                
+                document.getElementById('flagIndicator').className = 'flag-indicator ' + flagInfo.cls;
+                document.getElementById('flagIndicator').textContent = flagInfo.icon;
+                document.getElementById('flagStatus').className = 'flag-status ' + flagInfo.cls;
+                document.getElementById('flagStatus').textContent = flagInfo.text;
+            }
+            
+            if (data.st) {
+                raceStartTime = data.st;
+                console.log('[Flag] Start time:', data.st);
+            }
+            if (data.et) {
+                raceEndTime = data.et;
+                console.log('[Flag] End time:', data.et);
+            }
+        }
+
+        function updateTimer() {
+            if (!raceStartTime) {
+                document.getElementById('raceTimer').textContent = '--:--';
+                return;
+            }
+            
+            const now = Date.now();
+            const elapsed = Math.max(0, now - raceStartTime);
+            
+            const hours = Math.floor(elapsed / 3600000);
+            const mins = Math.floor((elapsed % 3600000) / 60000);
+            const secs = Math.floor((elapsed % 60000) / 1000);
+            
+            if (hours > 0) {
+                document.getElementById('raceTimer').textContent = 
+                    `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            } else {
+                document.getElementById('raceTimer').textContent = 
+                    `${mins}:${secs.toString().padStart(2, '0')}`;
+            }
+        }
+
+        parseUrlParams();
+    </script>
+</body>
+</html>

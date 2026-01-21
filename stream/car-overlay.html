@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Car Overlay - OBS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Roboto+Mono:wght@400;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: transparent;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+        }
+
+        /* Setup screen */
+        .setup-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #1a1a2e;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            z-index: 1000;
+        }
+
+        .setup-screen.hidden {
+            display: none;
+        }
+
+        .setup-screen h1 {
+            font-family: 'Orbitron', sans-serif;
+            color: #00d4ff;
+            font-size: 28px;
+        }
+
+        .setup-screen p {
+            color: #888;
+            font-size: 14px;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .setup-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background: #252540;
+            padding: 30px;
+            border-radius: 12px;
+            min-width: 350px;
+        }
+
+        .setup-form label {
+            color: #aaa;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .setup-form input, .setup-form select {
+            padding: 12px 16px;
+            background: #1a1a2e;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 18px;
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        .setup-form input:focus, .setup-form select:focus {
+            outline: none;
+            border-color: #00d4ff;
+        }
+
+        .setup-form button {
+            padding: 14px 24px;
+            background: linear-gradient(135deg, #00d4ff, #0099cc);
+            border: none;
+            border-radius: 6px;
+            color: #000;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .setup-form button:hover {
+            transform: scale(1.02);
+        }
+
+        .url-hint {
+            margin-top: 20px;
+            padding: 15px;
+            background: #333;
+            border-radius: 8px;
+            color: #888;
+            font-size: 12px;
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        .url-hint code {
+            color: #00d4ff;
+        }
+
+        /* Overlay bar styles */
+        .overlay-container {
+            position: fixed;
+            padding: 10px;
+        }
+
+        .overlay-container.top-left { top: 0; left: 0; }
+        .overlay-container.top-right { top: 0; right: 0; }
+        .overlay-container.bottom-left { bottom: 0; left: 0; }
+        .overlay-container.bottom-right { bottom: 0; right: 0; }
+        .overlay-container.top-center { top: 0; left: 50%; transform: translateX(-50%); }
+        .overlay-container.bottom-center { bottom: 0; left: 50%; transform: translateX(-50%); }
+
+        .car-overlay {
+            display: flex;
+            align-items: stretch;
+            background: linear-gradient(180deg, rgba(20, 20, 40, 0.95) 0%, rgba(10, 10, 25, 0.95) 100%);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 1px rgba(255,255,255,0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Position badge */
+        .position-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 70px;
+            padding: 10px 15px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 36px;
+            font-weight: 900;
+            color: #fff;
+            background: linear-gradient(135deg, #00d4ff, #0088aa);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .position-badge.p1 { background: linear-gradient(135deg, #ffd700, #cc9900); color: #000; }
+        .position-badge.p2 { background: linear-gradient(135deg, #c0c0c0, #888888); color: #000; }
+        .position-badge.p3 { background: linear-gradient(135deg, #cd7f32, #8b4513); color: #fff; }
+
+        /* Car info section */
+        .car-info {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 10px 20px;
+            min-width: 200px;
+            border-right: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .car-number {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 28px;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+
+        .driver-name {
+            font-size: 14px;
+            color: #ccc;
+            margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 180px;
+        }
+
+        .team-name {
+            font-size: 11px;
+            color: #888;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 180px;
+        }
+
+        /* Timing section */
+        .timing-section {
+            display: flex;
+            align-items: center;
+            padding: 10px 15px;
+            gap: 15px;
+        }
+
+        .timing-block {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 80px;
+        }
+
+        .timing-label {
+            font-size: 10px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+
+        .timing-value {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 20px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .timing-value.gap {
+            color: #ff6b6b;
+        }
+
+        /* Sector times */
+        .sectors-container {
+            display: flex;
+            gap: 8px;
+            padding: 10px 15px;
+            border-left: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .sector {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 70px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.05);
+        }
+
+        .sector.active {
+            background: rgba(0, 212, 255, 0.2);
+            box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+        }
+
+        .sector-label {
+            font-size: 10px;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .sector.s1 .sector-label { color: #ff6b6b; }
+        .sector.s2 .sector-label { color: #4ecdc4; }
+        .sector.s3 .sector-label { color: #a78bfa; }
+
+        .sector-time {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 16px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        /* Lap time section */
+        .lap-section {
+            display: flex;
+            align-items: center;
+            padding: 10px 20px;
+            border-left: 1px solid rgba(255,255,255,0.1);
+            background: rgba(0,0,0,0.2);
+        }
+
+        .lap-block {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .lap-label {
+            font-size: 10px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+
+        .lap-time {
+            font-family: 'Roboto Mono', monospace;
+            font-size: 24px;
+            font-weight: bold;
+            color: #00ff88;
+        }
+
+        .lap-time.best {
+            color: #a78bfa;
+        }
+
+        /* Progress bar */
+        .track-progress {
+            position: relative;
+            width: 100%;
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+        }
+
+        .track-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff6b6b 0%, #ff6b6b 33.3%, #4ecdc4 33.3%, #4ecdc4 66.6%, #a78bfa 66.6%, #a78bfa 100%);
+            transition: width 0.5s ease;
+        }
+
+        .track-progress-marker {
+            position: absolute;
+            top: -3px;
+            width: 4px;
+            height: 12px;
+            background: #fff;
+            border-radius: 2px;
+            transform: translateX(-50%);
+            box-shadow: 0 0 6px rgba(255,255,255,0.8);
+            transition: left 0.5s ease;
+        }
+
+        /* Status indicators */
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .status-badge.pit {
+            background: #ff9800;
+            color: #000;
+        }
+
+        .status-badge.out {
+            background: #f44336;
+            color: #fff;
+        }
+
+        /* Connection status */
+        .connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 6px 12px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 4px;
+            font-size: 11px;
+            color: #888;
+        }
+
+        .connection-status.connected {
+            color: #00ff88;
+        }
+
+        .connection-status.disconnected {
+            color: #ff4444;
+        }
+
+        /* Hidden when in OBS mode */
+        .obs-hide {
+            display: block;
+        }
+
+        body.obs-mode .obs-hide {
+            display: none;
+        }
+
+        /* Compact mode */
+        .car-overlay.compact .car-info {
+            min-width: 150px;
+            padding: 8px 15px;
+        }
+
+        .car-overlay.compact .car-number {
+            font-size: 22px;
+        }
+
+        .car-overlay.compact .driver-name {
+            font-size: 12px;
+        }
+
+        .car-overlay.compact .position-badge {
+            font-size: 28px;
+            min-width: 55px;
+        }
+
+        .car-overlay.compact .timing-value {
+            font-size: 16px;
+        }
+
+        .car-overlay.compact .sector-time {
+            font-size: 14px;
+        }
+
+        .car-overlay.compact .lap-time {
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Setup Screen -->
+    <div class="setup-screen" id="setupScreen">
+        <h1>🏎️ Car Overlay for OBS</h1>
+        <p>Enter the car number to track and configure the overlay position.</p>
+        
+        <div class="setup-form">
+            <label>Car Number</label>
+            <input type="text" id="carNumberInput" placeholder="e.g., 36" autofocus>
+            
+            <label>WebSocket URL</label>
+            <input type="text" id="wsUrlInput" placeholder="wss://livetiming.example.com/..." value="wss://livetiming.getraceresults.com/lt/connect?transport=webSockets&amp;clientProtocol=1.5&amp;_tk=84992738a8304d15a8f20722b7a27947&amp;_gr=w&amp;_tkdm=1041140&amp;connectionToken=FWT09RJEOFAHDbxfUngcCCb1h6UM6Yy0rx%2BBv0jXaVEC5KnepwdkWeHqZh58rBQmrV1hEAOpLQbfzrSUbMLBjHrrRU0NjN1kSovhFcPmOY%2BQxqWcOvb4ua56RpUtVb1O&amp;tid=6">
+            
+            <label>Position</label>
+            <select id="positionSelect">
+                <option value="top-left">Top Left</option>
+                <option value="top-center">Top Center</option>
+                <option value="top-right">Top Right</option>
+                <option value="bottom-left" selected>Bottom Left</option>
+                <option value="bottom-center">Bottom Center</option>
+                <option value="bottom-right">Bottom Right</option>
+            </select>
+            
+            <label>Style</label>
+            <select id="styleSelect">
+                <option value="full">Full (with sectors)</option>
+                <option value="compact">Compact</option>
+                <option value="minimal">Minimal (position + time only)</option>
+            </select>
+            
+            <button onclick="startOverlay()">Start Overlay</button>
+            <button onclick="dumpDebug()" style="background: #666; margin-top: 10px;">🔍 Dump Debug Info</button>
+        </div>
+        
+        <div class="url-hint">
+            <strong>URL Parameters:</strong><br>
+            <code>?car=36&ws=wss://...&pos=bottom-left&style=full</code><br><br>
+            Add parameters to auto-start the overlay in OBS.
+        </div>
+        
+        <div id="debugOutput" style="margin-top: 20px; padding: 15px; background: #222; border-radius: 8px; color: #0f0; font-family: monospace; font-size: 11px; max-width: 600px; max-height: 300px; overflow: auto; white-space: pre-wrap; display: none;"></div>
+    </div>
+
+    <!-- Overlay Container -->
+    <div class="overlay-container bottom-left" id="overlayContainer" style="display: none;">
+        <div class="car-overlay" id="carOverlay">
+            <!-- Position -->
+            <div class="position-badge" id="positionBadge">-</div>
+            
+            <!-- Car Info -->
+            <div class="car-info">
+                <div class="car-number" id="carNumber">#--</div>
+                <div class="driver-name" id="driverName">Loading...</div>
+                <div class="team-name" id="teamName"></div>
+            </div>
+            
+            <!-- Gap -->
+            <div class="timing-section">
+                <div class="timing-block">
+                    <div class="timing-label">Gap</div>
+                    <div class="timing-value gap" id="gapValue">--</div>
+                </div>
+                <div class="timing-block">
+                    <div class="timing-label">Lap</div>
+                    <div class="timing-value" id="lapCount">--</div>
+                </div>
+            </div>
+            
+            <!-- Sectors -->
+            <div class="sectors-container" id="sectorsContainer">
+                <div class="sector s1" id="sector1">
+                    <div class="sector-label">S1</div>
+                    <div class="sector-time" id="s1Time">--</div>
+                </div>
+                <div class="sector s2" id="sector2">
+                    <div class="sector-label">S2</div>
+                    <div class="sector-time" id="s2Time">--</div>
+                </div>
+                <div class="sector s3" id="sector3">
+                    <div class="sector-label">S3</div>
+                    <div class="sector-time" id="s3Time">--</div>
+                </div>
+            </div>
+            
+            <!-- Lap Time -->
+            <div class="lap-section">
+                <div class="lap-block">
+                    <div class="lap-label">Last Lap</div>
+                    <div class="lap-time" id="lastLapTime">--</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Track progress bar -->
+        <div class="track-progress" id="trackProgress" style="margin-top: 4px; border-radius: 3px; overflow: hidden;">
+            <div class="track-progress-marker" id="progressMarker" style="left: 0%;"></div>
+        </div>
+    </div>
+
+    <!-- Connection Status (hidden in OBS mode) -->
+    <div class="connection-status obs-hide" id="connectionStatus">Disconnected</div>
+
+    <script>
+        // Configuration
+        let config = {
+            carNumber: null,
+            wsUrl: null,
+            position: 'bottom-left',
+            style: 'full'
+        };
+
+        // State
+        let ws = null;
+        let headers = [];
+        let rows = [];
+        let carData = null;
+        let debugLog = [];
+        let rawMessages = [];
+        let animationState = {
+            lapStartTime: null,
+            sectorTimes: [35, 35, 30],
+            lastLapNum: 0
+        };
+        
+        function addDebug(msg) {
+            debugLog.push(new Date().toISOString().substr(11, 12) + ' ' + msg);
+            console.log('[Overlay]', msg);
+            if (debugLog.length > 100) debugLog.shift();
+        }
+        
+        function dumpDebug() {
+            const output = document.getElementById('debugOutput');
+            output.style.display = 'block';
+            
+            let dump = '=== DEBUG DUMP ===\n\n';
+            dump += 'Headers: ' + headers.length + '\n';
+            dump += headers.map(h => h.key).join(', ') + '\n\n';
+            dump += 'Rows: ' + rows.length + '\n';
+            if (rows.length > 0) {
+                dump += 'Row keys: ' + Object.keys(rows[0]).join(', ') + '\n';
+                dump += 'First 3 rows:\n';
+                rows.slice(0, 3).forEach((r, i) => {
+                    dump += i + ': ' + JSON.stringify(r).substring(0, 200) + '\n';
+                });
+            }
+            dump += '\n=== RAW MESSAGES (last 5) ===\n';
+            rawMessages.slice(-5).forEach((m, i) => {
+                dump += i + ': ' + m.substring(0, 300) + '\n';
+            });
+            dump += '\n=== DEBUG LOG ===\n';
+            dump += debugLog.join('\n');
+            
+            output.textContent = dump;
+        }
+
+        // Parse URL parameters
+        function parseUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            
+            if (params.has('car')) {
+                config.carNumber = params.get('car');
+                document.getElementById('carNumberInput').value = config.carNumber;
+            }
+            
+            if (params.has('ws')) {
+                config.wsUrl = params.get('ws');
+                document.getElementById('wsUrlInput').value = config.wsUrl;
+            }
+            
+            if (params.has('pos')) {
+                config.position = params.get('pos');
+                document.getElementById('positionSelect').value = config.position;
+            }
+            
+            if (params.has('style')) {
+                config.style = params.get('style');
+                document.getElementById('styleSelect').value = config.style;
+            }
+            
+            // Auto-start if car and ws are provided
+            if (config.carNumber && config.wsUrl) {
+                document.body.classList.add('obs-mode');
+                startOverlay();
+            }
+        }
+
+        // Start the overlay
+        function startOverlay() {
+            config.carNumber = document.getElementById('carNumberInput').value.trim();
+            config.wsUrl = document.getElementById('wsUrlInput').value.trim();
+            config.position = document.getElementById('positionSelect').value;
+            config.style = document.getElementById('styleSelect').value;
+            
+            if (!config.carNumber) {
+                alert('Please enter a car number');
+                return;
+            }
+            
+            if (!config.wsUrl) {
+                alert('Please enter a WebSocket URL');
+                return;
+            }
+            
+            // Hide setup, show overlay
+            document.getElementById('setupScreen').classList.add('hidden');
+            document.getElementById('overlayContainer').style.display = 'block';
+            
+            // Apply position
+            const container = document.getElementById('overlayContainer');
+            container.className = 'overlay-container ' + config.position;
+            
+            // Apply style
+            const overlay = document.getElementById('carOverlay');
+            overlay.classList.remove('compact');
+            
+            if (config.style === 'compact') {
+                overlay.classList.add('compact');
+            } else if (config.style === 'minimal') {
+                overlay.classList.add('compact');
+                document.getElementById('sectorsContainer').style.display = 'none';
+                document.getElementById('trackProgress').style.display = 'none';
+            }
+            
+            // Set car number
+            document.getElementById('carNumber').textContent = '#' + config.carNumber;
+            
+            // Connect
+            connect(config.wsUrl);
+            
+            // Start animation loop
+            requestAnimationFrame(animationLoop);
+        }
+
+        // WebSocket connection
+        function connect(url) {
+            setConnectionStatus('Connecting...');
+            
+            ws = new WebSocket(url);
+            
+            ws.onopen = function() {
+                setConnectionStatus('Connected', true);
+            };
+            
+            ws.onmessage = function(event) {
+                const data = event.data;
+                if (!data || data === '{}') return;
+                
+                // Store raw messages for debugging
+                rawMessages.push(data.substring(0, 500));
+                if (rawMessages.length > 20) rawMessages.shift();
+                
+                try {
+                    const message = JSON.parse(data);
+                    if (message.M && Array.isArray(message.M)) {
+                        addDebug('WS received ' + message.M.length + ' messages');
+                        message.M.forEach(m => processMessage(m));
+                    }
+                } catch (e) {
+                    addDebug('Parse error: ' + e.message);
+                }
+            };
+            
+            ws.onclose = function() {
+                setConnectionStatus('Disconnected', false);
+                // Auto-reconnect after 3 seconds
+                setTimeout(() => {
+                    if (config.wsUrl) connect(config.wsUrl);
+                }, 3000);
+            };
+            
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                setConnectionStatus('Error', false);
+            };
+        }
+
+        function setConnectionStatus(text, connected) {
+            const el = document.getElementById('connectionStatus');
+            el.textContent = text;
+            el.className = 'connection-status obs-hide ' + (connected ? 'connected' : 'disconnected');
+        }
+
+        // Message processing
+        function processMessage(msg) {
+            let method, args;
+            
+            if (Array.isArray(msg)) {
+                method = msg[0];
+                args = msg.slice(1);
+            } else if (msg.M) {
+                method = msg.M;
+                args = msg.A || [];
+            } else {
+                return;
+            }
+            
+            // Log all messages
+            addDebug('Method: ' + method);
+            
+            // Handle different message types
+            switch (method) {
+                case '_':
+                    // Compressed bulk init
+                    if (args[0] && typeof args[0] === 'string') {
+                        try {
+                            addDebug('Decompressing, length: ' + args[0].length);
+                            let decompressed = LZString.decompressFromUTF16(args[0]);
+                            if (!decompressed) decompressed = LZString.decompress(args[0]);
+                            if (decompressed) {
+                                addDebug('Decompressed OK, length: ' + decompressed.length);
+                                const data = JSON.parse(decompressed);
+                                processBulkInit(data);
+                            } else {
+                                addDebug('Decompression returned null!');
+                            }
+                        } catch (e) {
+                            addDebug('Decompress error: ' + e.message);
+                        }
+                    }
+                    break;
+                    
+                case 'r_i':
+                    // Results init
+                    addDebug('r_i received');
+                    processResultsInit(args[0]);
+                    break;
+                    
+                case 'r_c':
+                    // Results change
+                    processResultsChange(args);
+                    break;
+            }
+        }
+
+        function processBulkInit(data) {
+            addDebug('processBulkInit called');
+            addDebug('Raw data preview: ' + JSON.stringify(data).substring(0, 300));
+            
+            if (Array.isArray(data)) {
+                addDebug('Data is array with ' + data.length + ' items');
+                data.forEach((msg, idx) => {
+                    const msgType = Array.isArray(msg) ? msg[0] : typeof msg;
+                    addDebug('Item ' + idx + ': ' + msgType);
+                    if (Array.isArray(msg) && msg.length >= 2) {
+                        processMessage(msg);
+                    }
+                });
+            } else if (typeof data === 'object') {
+                addDebug('Data is object with keys: ' + Object.keys(data).join(', '));
+                Object.entries(data).forEach(([key, value]) => {
+                    addDebug('Processing key: ' + key);
+                    processMessage([key, value]);
+                });
+            }
+        }
+
+        function processResultsInit(data) {
+            console.log('[Overlay] processResultsInit called');
+            
+            if (!data) {
+                console.log('[Overlay] r_i data is null/undefined');
+                return;
+            }
+            
+            rows = [];
+            
+            // Parse headers - they're in data.l.h
+            if (data.l?.h) {
+                headers = data.l.h.map(h => {
+                    let key = h.n ? h.n.toLowerCase().replace(/\s/g, '_') : '';
+                    if (h.p) key += '_' + h.p;
+                    return { name: h.n || '', key: key };
+                });
+                console.log('[Overlay] Headers:', headers.map(h => h.key).join(', '));
+            } else {
+                console.log('[Overlay] No headers found');
+            }
+            
+            // Parse rows - they're in data.r as FLAT cell array [rowIdx, colIdx, value, meta]
+            // NOT in data.l.r
+            if (data.r && Array.isArray(data.r)) {
+                console.log('[Overlay] Found', data.r.length, 'cells in data.r');
+                
+                data.r.forEach(cell => {
+                    if (!Array.isArray(cell) || cell.length < 3) return;
+                    
+                    const [rowIdx, colIdx, value, meta] = cell;
+                    if (rowIdx === -1 && colIdx === -1) return;
+                    
+                    // Ensure row exists
+                    while (rows.length <= rowIdx) {
+                        rows.push({ _index: rows.length });
+                    }
+                    
+                    // Store by column number
+                    rows[rowIdx]['col_' + colIdx] = value;
+                    
+                    // Also store by header key
+                    const header = headers[colIdx];
+                    if (header && header.key) {
+                        rows[rowIdx][header.key] = value;
+                    }
+                });
+                
+                console.log('[Overlay] Processed into', rows.length, 'rows');
+                if (rows.length > 0) {
+                    console.log('[Overlay] First row:', JSON.stringify(rows[0]));
+                }
+            } else {
+                console.log('[Overlay] No data.r found. Keys:', Object.keys(data).join(', '));
+            }
+            
+            updateCarDisplay();
+        }
+
+        // Process cell changes - format is [rowIdx, colIdx, value, meta]
+        function processResultsChange(args) {
+            if (!args || !Array.isArray(args)) return;
+            
+            let updateCount = 0;
+            
+            args.forEach(cellArray => {
+                if (!Array.isArray(cellArray)) return;
+                
+                cellArray.forEach(cell => {
+                    if (!Array.isArray(cell) || cell.length < 3) return;
+                    
+                    const [rowIdx, colIdx, value, meta] = cell;
+                    if (rowIdx === -1 && colIdx === -1) return;
+                    
+                    // Ensure row exists
+                    while (rows.length <= rowIdx) {
+                        rows.push({ _index: rows.length });
+                    }
+                    
+                    // Store by column number
+                    rows[rowIdx]['col_' + colIdx] = value;
+                    
+                    // Also store by header key
+                    const header = headers[colIdx];
+                    if (header && header.key) {
+                        rows[rowIdx][header.key] = value;
+                    }
+                    
+                    updateCount++;
+                });
+            });
+            
+            if (updateCount > 0) {
+                console.log('[Overlay] Updated', updateCount, 'rows, total:', rows.length);
+            }
+            
+            updateCarDisplay();
+        }
+
+        // Update the overlay display
+        function updateCarDisplay() {
+            console.log('[Overlay] Looking for car:', config.carNumber, 'in', rows.length, 'rows');
+            
+            // Find our car - try multiple fields and formats
+            carData = rows.find(r => {
+                const num1 = String(r.startnumber || '').trim();
+                const num2 = String(r.col_2 || '').trim();
+                const target = String(config.carNumber).trim();
+                
+                return num1 === target || num2 === target;
+            });
+            
+            if (!carData) {
+                // Debug: show available car numbers
+                const availableCars = rows.map(r => r.startnumber || r.col_2).filter(Boolean);
+                console.log('[Overlay] Car not found. Available cars:', availableCars);
+                document.getElementById('driverName').textContent = 'Car not found';
+                document.getElementById('teamName').textContent = 'Available: ' + availableCars.slice(0, 10).join(', ');
+                return;
+            }
+            
+            console.log('[Overlay] Found car data:', carData);
+            
+            // Position
+            const pos = carData.position || carData.col_0 || '-';
+            const posEl = document.getElementById('positionBadge');
+            posEl.textContent = pos;
+            posEl.className = 'position-badge';
+            if (pos === '1') posEl.classList.add('p1');
+            else if (pos === '2') posEl.classList.add('p2');
+            else if (pos === '3') posEl.classList.add('p3');
+            
+            // Driver & Team
+            document.getElementById('driverName').textContent = carData.name || carData.currentdriver || carData.col_4 || 'Unknown';
+            document.getElementById('teamName').textContent = carData.car || carData.team || carData.col_5 || '';
+            
+            // Gap
+            const gap = carData.hole || carData.diff || carData.col_11 || carData.col_12;
+            document.getElementById('gapValue').textContent = gap || (pos === '1' ? 'LEADER' : '--');
+            
+            // Lap count
+            document.getElementById('lapCount').textContent = carData.laps || carData.col_10 || '--';
+            
+            // Sector times
+            const s1Raw = carData.sectortimes_1 || carData.col_16;
+            const s2Raw = carData.sectortimes_2 || carData.col_17;
+            const s3Raw = carData.sectortimes_3 || carData.col_18;
+            
+            const s1 = parseFloat(s1Raw);
+            const s2 = parseFloat(s2Raw);
+            const s3 = parseFloat(s3Raw);
+            
+            const isValidSector = (v) => v > 5000000 && v < 300000000;
+            
+            document.getElementById('s1Time').textContent = isValidSector(s1) ? (s1 / 1000000).toFixed(3) : '--';
+            document.getElementById('s2Time').textContent = isValidSector(s2) ? (s2 / 1000000).toFixed(3) : '--';
+            document.getElementById('s3Time').textContent = isValidSector(s3) ? (s3 / 1000000).toFixed(3) : '--';
+            
+            // Update animation state sector times
+            if (isValidSector(s1)) animationState.sectorTimes[0] = s1 / 1000000;
+            if (isValidSector(s2)) animationState.sectorTimes[1] = s2 / 1000000;
+            if (isValidSector(s3)) animationState.sectorTimes[2] = s3 / 1000000;
+            
+            // Lap time
+            const lastLap = carData.lastroundtime || carData.col_13;
+            const lastLapNum = parseInt(lastLap);
+            if (lastLapNum > 30000000 && lastLapNum < 600000000) {
+                document.getElementById('lastLapTime').textContent = formatTime(lastLapNum);
+            }
+            
+            // Check for new lap
+            const currentLap = parseInt(carData.laps || carData.col_10 || '0');
+            if (currentLap > animationState.lastLapNum && currentLap > 0) {
+                animationState.lapStartTime = Date.now();
+                animationState.lastLapNum = currentLap;
+            }
+        }
+
+        function formatTime(microseconds) {
+            const totalSeconds = microseconds / 1000000;
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = (totalSeconds % 60).toFixed(3);
+            return minutes > 0 ? `${minutes}:${seconds.padStart(6, '0')}` : seconds;
+        }
+
+        // Animation loop for track progress
+        function animationLoop() {
+            if (animationState.lapStartTime) {
+                const elapsed = (Date.now() - animationState.lapStartTime) / 1000;
+                const s1 = animationState.sectorTimes[0];
+                const s2 = animationState.sectorTimes[1];
+                const s3 = animationState.sectorTimes[2];
+                const totalLap = s1 + s2 + s3;
+                
+                let position;
+                let currentSector;
+                
+                if (elapsed < s1) {
+                    currentSector = 1;
+                    position = (elapsed / s1) * 33.3;
+                } else if (elapsed < s1 + s2) {
+                    currentSector = 2;
+                    position = 33.3 + ((elapsed - s1) / s2) * 33.3;
+                } else if (elapsed < totalLap) {
+                    currentSector = 3;
+                    position = 66.6 + ((elapsed - s1 - s2) / s3) * 33.3;
+                } else {
+                    currentSector = 3;
+                    position = 98;
+                }
+                
+                // Update progress marker
+                document.getElementById('progressMarker').style.left = position + '%';
+                
+                // Highlight active sector
+                document.getElementById('sector1').classList.toggle('active', currentSector === 1);
+                document.getElementById('sector2').classList.toggle('active', currentSector === 2);
+                document.getElementById('sector3').classList.toggle('active', currentSector === 3);
+            }
+            
+            requestAnimationFrame(animationLoop);
+        }
+
+        // Initialize
+        parseUrlParams();
+    </script>
+</body>
+</html>

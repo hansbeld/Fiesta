@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Race Messages Overlay - OBS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: transparent;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+        }
+
+        /* Setup screen */
+        .setup-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #1a1a2e;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            z-index: 1000;
+        }
+
+        .setup-screen.hidden {
+            display: none;
+        }
+
+        .setup-screen h1 {
+            font-family: 'Inter', sans-serif;
+            color: #00d4ff;
+            font-size: 24px;
+        }
+
+        .setup-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background: #252540;
+            padding: 30px;
+            border-radius: 12px;
+            min-width: 350px;
+        }
+
+        .setup-form label {
+            color: #aaa;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .setup-form input, .setup-form select {
+            padding: 12px 16px;
+            background: #1a1a2e;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 16px;
+        }
+
+        .setup-form button {
+            padding: 14px 24px;
+            background: linear-gradient(135deg, #00d4ff, #0099cc);
+            border: none;
+            border-radius: 6px;
+            color: #000;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .url-hint {
+            padding: 15px;
+            background: #333;
+            border-radius: 8px;
+            color: #888;
+            font-size: 12px;
+            font-family: monospace;
+        }
+
+        .url-hint code {
+            color: #00d4ff;
+        }
+
+        /* Messages overlay */
+        .overlay-container {
+            position: fixed;
+            padding: 10px;
+            max-width: 500px;
+        }
+
+        .overlay-container.top-left { top: 0; left: 0; }
+        .overlay-container.top-right { top: 0; right: 0; }
+        .overlay-container.bottom-left { bottom: 0; left: 0; }
+        .overlay-container.bottom-right { bottom: 0; right: 0; }
+        .overlay-container.top-center { top: 0; left: 50%; transform: translateX(-50%); }
+        .overlay-container.bottom-center { bottom: 0; left: 50%; transform: translateX(-50%); }
+
+        .messages-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .message-item {
+            padding: 12px 16px;
+            background: linear-gradient(180deg, rgba(30, 30, 60, 0.95) 0%, rgba(20, 20, 45, 0.95) 100%);
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+            border-left: 4px solid #00d4ff;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 500;
+            line-height: 1.4;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        /* Message types based on background color */
+        .message-item.penalty {
+            border-left-color: #ff4444;
+            background: linear-gradient(180deg, rgba(80, 20, 20, 0.95) 0%, rgba(50, 15, 15, 0.95) 100%);
+        }
+
+        .message-item.yellow {
+            border-left-color: #ffdd00;
+            background: linear-gradient(180deg, rgba(80, 70, 20, 0.95) 0%, rgba(50, 45, 15, 0.95) 100%);
+        }
+
+        .message-item.safety {
+            border-left-color: #ff8800;
+            background: linear-gradient(180deg, rgba(80, 50, 20, 0.95) 0%, rgba(50, 30, 15, 0.95) 100%);
+        }
+
+        .message-item.green {
+            border-left-color: #00ff88;
+            background: linear-gradient(180deg, rgba(20, 60, 40, 0.95) 0%, rgba(15, 40, 30, 0.95) 100%);
+        }
+
+        .message-item.info {
+            border-left-color: #00d4ff;
+        }
+
+        /* Timestamp */
+        .message-time {
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 4px;
+        }
+
+        .message-text {
+            color: #fff;
+        }
+
+        /* Compact mode */
+        .messages-list.compact .message-item {
+            padding: 8px 12px;
+            font-size: 12px;
+        }
+
+        .messages-list.compact .message-time {
+            font-size: 10px;
+        }
+
+        /* No messages */
+        .no-messages {
+            padding: 15px 20px;
+            background: rgba(30, 30, 60, 0.9);
+            border-radius: 8px;
+            color: #666;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 6px 12px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 4px;
+            font-size: 11px;
+            color: #888;
+        }
+
+        .connection-status.connected { color: #00ff88; }
+        .connection-status.disconnected { color: #ff4444; }
+
+        body.obs-mode .connection-status { display: none; }
+    </style>
+</head>
+<body>
+    <!-- Setup Screen -->
+    <div class="setup-screen" id="setupScreen">
+        <h1>📢 Race Messages Overlay</h1>
+        
+        <div class="setup-form">
+            <label>WebSocket URL</label>
+            <input type="text" id="wsUrlInput" placeholder="wss://livetiming.example.com/..." value="wss://livetiming.getraceresults.com/lt/connect?transport=webSockets&amp;clientProtocol=1.5&amp;_tk=84992738a8304d15a8f20722b7a27947&amp;_gr=w&amp;_tkdm=1041140&amp;connectionToken=FWT09RJEOFAHDbxfUngcCCb1h6UM6Yy0rx%2BBv0jXaVEC5KnepwdkWeHqZh58rBQmrV1hEAOpLQbfzrSUbMLBjHrrRU0NjN1kSovhFcPmOY%2BQxqWcOvb4ua56RpUtVb1O&amp;tid=6">
+            
+            <label>Position</label>
+            <select id="positionSelect">
+                <option value="top-left">Top Left</option>
+                <option value="top-right">Top Right</option>
+                <option value="bottom-left" selected>Bottom Left</option>
+                <option value="bottom-right">Bottom Right</option>
+            </select>
+            
+            <label>Max Messages</label>
+            <select id="maxMessages">
+                <option value="1">1</option>
+                <option value="3" selected>3</option>
+                <option value="5">5</option>
+                <option value="10">10</option>
+            </select>
+            
+            <label>Style</label>
+            <select id="styleSelect">
+                <option value="full">Full</option>
+                <option value="compact">Compact</option>
+            </select>
+
+            <label>Show Timestamps</label>
+            <select id="showTimestamps">
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+            </select>
+            
+            <button onclick="startOverlay()">Start Overlay</button>
+        </div>
+        
+        <div class="url-hint">
+            <code>?ws=wss://...&pos=bottom-left&max=3&style=full&time=yes</code>
+        </div>
+    </div>
+
+    <!-- Overlay -->
+    <div class="overlay-container bottom-left" id="overlayContainer" style="display: none;">
+        <div class="messages-list" id="messagesList">
+            <div class="no-messages">Waiting for messages...</div>
+        </div>
+    </div>
+
+    <div class="connection-status" id="connectionStatus">Disconnected</div>
+
+    <script>
+        let config = { 
+            wsUrl: null, 
+            position: 'bottom-left', 
+            style: 'full',
+            maxMessages: 3,
+            showTimestamps: true
+        };
+        let ws = null;
+        let messages = [];
+
+        function intToRgb(colorInt) {
+            if (!colorInt && colorInt !== 0) return null;
+            const r = (colorInt >> 16) & 255;
+            const g = (colorInt >> 8) & 255;
+            const b = colorInt & 255;
+            return `${r},${g},${b}`;
+        }
+
+        // Parse URL params
+        function parseUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            
+            if (params.has('ws')) {
+                config.wsUrl = params.get('ws');
+                document.getElementById('wsUrlInput').value = config.wsUrl;
+            }
+            if (params.has('pos')) {
+                config.position = params.get('pos');
+                document.getElementById('positionSelect').value = config.position;
+            }
+            if (params.has('max')) {
+                config.maxMessages = parseInt(params.get('max')) || 3;
+                document.getElementById('maxMessages').value = config.maxMessages;
+            }
+            if (params.has('style')) {
+                config.style = params.get('style');
+                document.getElementById('styleSelect').value = config.style;
+            }
+            if (params.has('time')) {
+                config.showTimestamps = params.get('time') !== 'no';
+                document.getElementById('showTimestamps').value = config.showTimestamps ? 'yes' : 'no';
+            }
+            
+            if (config.wsUrl) {
+                document.body.classList.add('obs-mode');
+                startOverlay();
+            }
+        }
+
+        function startOverlay() {
+            config.wsUrl = document.getElementById('wsUrlInput').value.trim();
+            config.position = document.getElementById('positionSelect').value;
+            config.maxMessages = parseInt(document.getElementById('maxMessages').value) || 3;
+            config.style = document.getElementById('styleSelect').value;
+            config.showTimestamps = document.getElementById('showTimestamps').value === 'yes';
+            
+            if (!config.wsUrl) {
+                alert('Please enter a WebSocket URL');
+                return;
+            }
+            
+            document.getElementById('setupScreen').classList.add('hidden');
+            document.getElementById('overlayContainer').style.display = 'block';
+            
+            const container = document.getElementById('overlayContainer');
+            container.className = 'overlay-container ' + config.position;
+            
+            const list = document.getElementById('messagesList');
+            list.className = 'messages-list ' + config.style;
+            
+            connect(config.wsUrl);
+        }
+
+        function connect(url) {
+            document.getElementById('connectionStatus').textContent = 'Connecting...';
+            
+            ws = new WebSocket(url);
+            
+            ws.onopen = () => {
+                document.getElementById('connectionStatus').textContent = 'Connected';
+                document.getElementById('connectionStatus').className = 'connection-status connected';
+            };
+            
+            ws.onmessage = (event) => {
+                if (!event.data || event.data === '{}') return;
+                try {
+                    const message = JSON.parse(event.data);
+                    if (message.M) message.M.forEach(m => processMessage(m));
+                } catch (e) {}
+            };
+            
+            ws.onclose = () => {
+                document.getElementById('connectionStatus').textContent = 'Disconnected';
+                document.getElementById('connectionStatus').className = 'connection-status disconnected';
+                setTimeout(() => { if (config.wsUrl) connect(config.wsUrl); }, 3000);
+            };
+        }
+
+        function processMessage(msg) {
+            let method, args;
+            if (Array.isArray(msg)) { method = msg[0]; args = msg.slice(1); }
+            else if (msg.M) { method = msg.M; args = msg.A || []; }
+            else return;
+            
+            switch (method) {
+                case '_':
+                    if (args[0] && typeof args[0] === 'string') {
+                        try {
+                            let decompressed = LZString.decompressFromUTF16(args[0]);
+                            if (!decompressed) decompressed = LZString.decompress(args[0]);
+                            if (decompressed) {
+                                const data = JSON.parse(decompressed);
+                                if (Array.isArray(data)) {
+                                    data.forEach(m => {
+                                        if (Array.isArray(m) && m[0] === 'm_i') {
+                                            processMessagesInit(m[1]);
+                                        }
+                                    });
+                                }
+                            }
+                        } catch (e) {}
+                    }
+                    break;
+                case 'm_i':
+                    processMessagesInit(args[0]);
+                    break;
+                case 'm_c':
+                    addMessage(args[0]);
+                    break;
+            }
+        }
+
+        function processMessagesInit(data) {
+            messages = [];
+            if (Array.isArray(data)) {
+                data.forEach(m => {
+                    messages.push({
+                        id: m.Id,
+                        text: m.t,
+                        bc: intToRgb(m.bc),
+                        fc: intToRgb(m.fc),
+                        time: new Date()
+                    });
+                });
+            }
+            renderMessages();
+        }
+
+        function addMessage(data) {
+            if (!data) return;
+            
+            messages.push({
+                id: data.Id,
+                text: data.t,
+                bc: intToRgb(data.bc),
+                fc: intToRgb(data.fc),
+                time: new Date()
+            });
+            
+            // Keep only last N messages
+            while (messages.length > config.maxMessages * 2) {
+                messages.shift();
+            }
+            
+            renderMessages();
+        }
+
+        function getMessageType(text, bc) {
+            const t = (text || '').toUpperCase();
+            
+            if (t.includes('PENALTY') || t.includes('BLACK AND WHITE') || t.includes('DRIVE THROUGH')) {
+                return 'penalty';
+            }
+            if (t.includes('YELLOW') || t.includes('CAUTION')) {
+                return 'yellow';
+            }
+            if (t.includes('SAFETY CAR') || t.includes('FCY') || t.includes('FULL COURSE') || t.includes('CODE 60')) {
+                return 'safety';
+            }
+            if (t.includes('GREEN FLAG') || t.includes('RACE START')) {
+                return 'green';
+            }
+            return 'info';
+        }
+
+        function renderMessages() {
+            const list = document.getElementById('messagesList');
+            
+            if (messages.length === 0) {
+                list.innerHTML = '<div class="no-messages">Waiting for messages...</div>';
+                return;
+            }
+            
+            const recent = messages.slice(-config.maxMessages).reverse();
+            
+            list.innerHTML = recent.map(m => {
+                const type = getMessageType(m.text, m.bc);
+                const timeStr = m.time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                
+                return `
+                    <div class="message-item ${type}">
+                        ${config.showTimestamps ? `<div class="message-time">${timeStr}</div>` : ''}
+                        <div class="message-text">${m.text || ''}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        parseUrlParams();
+    </script>
+</body>
+</html>
